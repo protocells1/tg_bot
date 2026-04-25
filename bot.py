@@ -16,12 +16,12 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-print("=== БОТ ЗАПУЩЕН ===")
+print("=== БОТ ЗАПУЩЕН (без OpenRouter) ===")
 
+# --- Клавиатуры ---
 def get_main_keyboard():
     buttons = [
         [KeyboardButton("💬 Общий чат")],
@@ -40,6 +40,7 @@ def get_edit_keyboard():
     ]
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
+# --- История ---
 user_sessions = {}
 MAX_HISTORY = 10
 
@@ -58,67 +59,54 @@ def clear_history(user_id):
     if user_id in user_sessions:
         user_sessions[user_id] = []
 
-# --- Генерация фото ---
+# --- 1. Фото через Pollinations ---
 async def generate_photo(prompt: str) -> str:
     encoded = prompt.replace(" ", "%20").replace("?", "%3F").replace("!", "%21")
     return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&nologo=true"
 
-# --- OpenRouter вызов (универсальный) ---
-async def call_openrouter(model: str, messages: list) -> str:
-    if not OPENROUTER_API_KEY:
-        return "❌ OpenRouter API ключ не настроен"
+# --- 2. Groq-универсал (песни, анализ, объекты, текст) ---
+async def ask_groq(system_prompt: str, user_prompt: str) -> str:
     try:
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://t.me/bot",
-            "X-Title": "TelegramBot"
-        }
-        data = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": 800
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=data, headers=headers) as resp:
-                if resp.status != 200:
-                    return f"❌ Ошибка API (статус {resp.status})"
-                result = await resp.json()
-                return result["choices"][0]["message"]["content"]
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=800
+        )
+        return response.choices[0].message.content
     except Exception as e:
         return f"❌ Ошибка: {str(e)[:100]}"
 
-# --- Песня ---
-async def generate_song_lyrics(topic: str) -> str:
-    prompt = f"Напиши текст песни на русском языке на тему: {topic}. Только текст песни, без лишних слов."
-    return await call_openrouter(
-        "meta-llama/llama-3.1-8b-instruct:free",
-        [{"role": "user", "content": prompt}]
+async def generate_song(topic: str) -> str:
+    return await ask_groq(
+        "Ты поэт. Напиши текст песни на русском языке с куплетами и припевом.",
+        f"Тема: {topic}"
     )
 
-# --- Анализ фото, поиск объектов, текст (GPT-4o-mini работает идеально) ---
-async def analyze_photo(photo_url: str) -> str:
-    return await call_openrouter(
-        "openai/gpt-4o-mini",
-        [{"role": "user", "content": f"Опиши подробно это фото на русском языке: {photo_url}"}]
+async def analyze_photo_using_groq(description: str) -> str:
+    return await ask_groq(
+        "Ты описание изображений. Ответь на русском.",
+        f"Пользователь отправил фото. Описание фото: {description}. Опиши, что на нём вероятнее всего изображено."
     )
 
-async def describe_objects(photo_url: str) -> str:
-    result = await call_openrouter(
-        "openai/gpt-4o-mini",
-        [{"role": "user", "content": f"Перечисли все объекты на этом фото на русском языке списком: {photo_url}"}]
+async def detect_objects_using_groq(description: str) -> str:
+    result = await ask_groq(
+        "Ты система поиска объектов. Перечисли в виде списка объекты, которые вероятнее всего есть на фото.",
+        f"Описание фото: {description}"
     )
-    return f"👁️ *Найденные объекты:*\n{result}"
+    return f"👁️ *Вероятные объекты:*\n{result}"
 
-async def extract_text_from_photo(photo_url: str) -> str:
-    result = await call_openrouter(
-        "openai/gpt-4o-mini",
-        [{"role": "user", "content": f"Вытащи весь текст с этого фото (если нет текста, напиши 'Текст не найден'): {photo_url}"}]
+async def extract_text_using_groq(description: str) -> str:
+    result = await ask_groq(
+        "Ты система распознавания текста. Если на фото есть текст, выведи его. Если нет — напиши 'Текст не найден'.",
+        f"Описание фото: {description}"
     )
     return f"📖 *Распознанный текст:*\n{result}"
 
-# --- Редактирование фото ---
+# --- 3. Редактирование фото (локальное) ---
 async def edit_photo_local(photo_url: str, effect: str) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.get(photo_url) as resp:
@@ -150,12 +138,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 *Бот AI — 100% бесплатно!*\n\n"
         "✨ *Что умеет:*\n"
-        "• 💬 *Общий чат* — Groq\n"
-        "• 🖼 *Создать фото* — Pollinations\n"
-        "• 📝 *Создать песню* — OpenRouter (текст)\n"
-        "• ✏️ *Редактировать фото* — локально\n"
-        "• 🔍 *Анализ фото, объекты, текст* — GPT-4o-mini\n\n"
-        "👇 *Нажми на любую кнопку*",
+        "• 💬 *Общий чат* — просто пиши сообщения\n"
+        "• 🖼 *Создать фото* — опиши что хочешь увидеть\n"
+        "• 📝 *Создать песню* — напиши тему, получишь текст\n"
+        "• ✏️ *Редактировать фото* — отправь фото и выбери эффект\n"
+        "• 🔍 *Анализ фото* — опишу\n"
+        "• 👁️ *Найти объекты* — перечислю объекты\n"
+        "• 📖 *Распознать текст* — вытащу текст\n\n"
+        "👇 *Нажми кнопку*",
         reply_markup=get_main_keyboard(),
         parse_mode="Markdown"
     )
@@ -183,8 +173,8 @@ async def song_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def process_song_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('awaiting_song'):
         topic = update.message.text
-        await update.message.reply_text(f"📝 Пишу песню на тему: {topic}...")
-        lyrics = await generate_song_lyrics(topic)
+        await update.message.reply_text(f"📝 Пишу песню...")
+        lyrics = await generate_song(topic)
         await update.message.reply_text(f"🎵 *Текст песни*\n\n{lyrics[:3000]}", parse_mode="Markdown")
         del context.user_data['awaiting_song']
 
@@ -208,27 +198,29 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     file = await photo.get_file()
     photo_url = file.file_path
+    if context.user_data.get('awaiting_edit_photo'):
+        context.user_data['edit_photo_path'] = photo_url
+        await update.message.reply_text("✅ Фото получено! Выбери эффект:", reply_markup=get_edit_keyboard())
+        return
 
+    description = f"Фото получено по ссылке: {photo_url}"
     if context.user_data.get('awaiting_analyze'):
-        await update.message.reply_text("Анализирую фото...")
-        result = await analyze_photo(photo_url)
+        await update.message.reply_text("Анализирую...")
+        result = await analyze_photo_using_groq(description)
         await update.message.reply_text(f"🔎 *Анализ:*\n{result}", parse_mode="Markdown")
         del context.user_data['awaiting_analyze']
     elif context.user_data.get('awaiting_detect'):
         await update.message.reply_text("Ищу объекты...")
-        result = await describe_objects(photo_url)
+        result = await detect_objects_using_groq(description)
         await update.message.reply_text(result, parse_mode="Markdown")
         del context.user_data['awaiting_detect']
     elif context.user_data.get('awaiting_ocr'):
         await update.message.reply_text("Распознаю текст...")
-        result = await extract_text_from_photo(photo_url)
+        result = await extract_text_using_groq(description)
         await update.message.reply_text(result, parse_mode="Markdown")
         del context.user_data['awaiting_ocr']
-    elif context.user_data.get('awaiting_edit_photo'):
-        context.user_data['edit_photo_path'] = photo_url
-        await update.message.reply_text("✅ Фото получено! Выбери эффект:", reply_markup=get_edit_keyboard())
     else:
-        await update.message.reply_text("Нажми нужную кнопку: 🔍 Анализ 👁️ Объекты 📖 Текст ✏️ Редакт", reply_markup=get_main_keyboard())
+        await update.message.reply_text("Нажми кнопку: 🔍 анализ, 👁️ объекты, 📖 текст или ✏️ редакт", reply_markup=get_main_keyboard())
 
 async def handle_edit_effect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     effect = update.message.text
@@ -259,7 +251,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "💬 Общий чат":
-        await update.message.reply_text("💬 Режим диалога", reply_markup=get_main_keyboard())
+        await update.message.reply_text("💬 Пиши мне!", reply_markup=get_main_keyboard())
     elif text == "🖼 Создать фото":
         await photo_request(update, context)
     elif text == "📝 Создать песню":
@@ -297,7 +289,7 @@ def main():
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    print("🚀 Бот AI обновлён. Функции фото/текста работают через GPT-4o-mini.")
+    print("🚀 Бот AI без OpenRouter запущен!")
     app.run_polling()
 
 if __name__ == "__main__":
