@@ -10,7 +10,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from dotenv import load_dotenv
 from groq import Groq
 
-# Загружаем токены
+# Загружаем переменные окружения
 load_dotenv()
 
 # Настройка логов
@@ -23,10 +23,19 @@ logging.basicConfig(
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+# Проверка наличия ключей
+print(f"TELEGRAM_TOKEN loaded: {bool(TELEGRAM_TOKEN)}")
+print(f"GROQ_API_KEY loaded: {bool(GROQ_API_KEY)}")
+
+if not TELEGRAM_TOKEN:
+    raise Exception("TELEGRAM_TOKEN not found!")
+if not GROQ_API_KEY:
+    raise Exception("GROQ_API_KEY not found!")
+
 # Подключаем Groq
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- КЛАВИАТУРА (кнопки внизу экрана) ---
+# --- КЛАВИАТУРА ---
 def get_main_keyboard():
     buttons = [
         ["🤖 Общий чат"],
@@ -36,7 +45,7 @@ def get_main_keyboard():
     ]
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
-# --- ИСТОРИЯ ДИАЛОГА (помнит последние 10 сообщений) ---
+# --- ИСТОРИЯ ДИАЛОГА ---
 user_sessions = {}
 MAX_HISTORY = 10
 
@@ -55,21 +64,21 @@ def clear_history(user_id):
     if user_id in user_sessions:
         user_sessions[user_id] = []
 
-# --- 1. ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЙ (Pollinations.ai - бесплатно) ---
+# --- ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЙ ---
 async def generate_image(prompt: str) -> str:
     encoded = prompt.replace(" ", "%20").replace("?", "%3F").replace("!", "%21")
     return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&nologo=true"
 
-# --- 2. ГЕНЕРАЦИЯ ВИДЕО (демо-режим) ---
+# --- ГЕНЕРАЦИЯ ВИДЕО ---
 async def generate_video_demo(prompt: str) -> str:
     await asyncio.sleep(2)
     return "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4"
 
-# --- 3. ОЖИВЛЕНИЕ ФОТО (упрощённая версия без moviepy) ---
+# --- ОЖИВЛЕНИЕ ФОТО (упрощённая версия)---
 async def animate_photo(photo_url: str) -> str:
     return photo_url
 
-# --- 4. РЕДАКТИРОВАНИЕ ФОТО ---
+# --- РЕДАКТИРОВАНИЕ ФОТО ---
 async def edit_photo(photo_url: str, prompt: str) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.get(photo_url) as resp:
@@ -84,7 +93,7 @@ async def edit_photo(photo_url: str, prompt: str) -> str:
     img = Image.open(input_path)
     text = prompt.lower()
     
-    if "черно" in text or "bw" in text or "чёрно" in text:
+    if "черно" in text or "bw" in text:
         img = img.convert("L")
     elif "размыт" in text or "blur" in text:
         img = img.filter(ImageFilter.GaussianBlur(radius=5))
@@ -112,19 +121,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎮 *Команды:*\n"
         "/image текст — сгенерировать картинку\n"
         "/video текст — сгенерировать видео\n"
-        "/animate — оживить фото (отправь фото)\n"
+        "/animate — оживить фото\n"
         "/edit описание — отредактировать фото\n"
         "/clear — очистить историю\n\n"
-        "📌 *Эффекты для редактирования фото:*\n"
-        "черно-белое, размытие, контраст, ярче, негатив\n\n"
-        "👇 *Используй кнопки внизу экрана!*",
+        "👇 *Используй кнопки внизу!*",
         reply_markup=get_main_keyboard(),
         parse_mode="Markdown"
     )
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clear_history(update.effective_user.id)
-    await update.message.reply_text("✅ История диалога очищена!", reply_markup=get_main_keyboard())
+    await update.message.reply_text("✅ История очищена!", reply_markup=get_main_keyboard())
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
@@ -132,10 +139,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt:
-        await update.message.reply_text("❓ Пример: `/image красивый закат`", parse_mode="Markdown")
+        await update.message.reply_text("❓ Пример: `/image кот`", parse_mode="Markdown")
         return
     
-    msg = await update.message.reply_text(f"🎨 Генерирую: *{prompt[:50]}...*", parse_mode="Markdown")
+    msg = await update.message.reply_text(f"🎨 Генерирую: {prompt[:50]}...")
     try:
         url = await generate_image(prompt)
         await update.message.reply_photo(photo=url, caption=f"🖼 {prompt[:200]}")
@@ -149,7 +156,7 @@ async def video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❓ Пример: `/video закат`")
         return
     
-    msg = await update.message.reply_text(f"🎬 Генерирую видео: *{prompt[:50]}...*", parse_mode="Markdown")
+    msg = await update.message.reply_text(f"🎬 Генерирую видео...")
     try:
         url = await generate_video_demo(prompt)
         await update.message.reply_video(video=url, caption=f"🎥 {prompt[:200]}")
@@ -158,33 +165,22 @@ async def video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"❌ Ошибка: {e}")
 
 async def animate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "✨ *Оживление фото*\n\nОтправь мне фотографию!",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("✨ Отправь мне фото!")
 
 async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt:
-        await update.message.reply_text(
-            "❓ *Примеры:*\n"
-            "/edit сделай черно-белым\n"
-            "/edit размытие\n"
-            "/edit контраст\n"
-            "/edit ярче\n"
-            "/edit негатив\n\n"
-            "Затем отправь фото.",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("❓ Пример: `/edit черно-белое`\nЗатем отправь фото")
         return
     context.user_data['edit_prompt'] = prompt
-    await update.message.reply_text("📸 Теперь отправь фото")
+    await update.message.reply_text("📸 Отправь фото")
 
-# --- ОБРАБОТКА ТЕКСТА (диалог с Groq) ---
+# --- ОБРАБОТКА ТЕКСТА (ДИАЛОГ С GROQ) ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
     
+    # Обработка кнопок
     if text == "🤖 Общий чат":
         await update.message.reply_text("✅ Пиши мне сообщения!", reply_markup=get_main_keyboard())
         return
@@ -192,7 +188,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Отправь: `/image описание`", parse_mode="Markdown")
         return
     elif text == "🎬 Сгенерировать видео":
-        await update.message.reply_text("Отправь: `/video описание`", parse_mode="Markdown")
+        await update.message.reply_text("Отправь: `/video описание`")
         return
     elif text == "✨ Оживить фото":
         await animate_command(update, context)
@@ -207,6 +203,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
     
+    # Диалог с Groq
     await update.message.chat.send_action(action="typing")
     add_to_history(user_id, "user", text)
     
@@ -225,7 +222,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(answer, reply_markup=get_main_keyboard())
     except Exception as e:
         logging.error(f"Groq error: {e}")
-        await update.message.reply_text("⚠️ Ошибка AI. Попробуй позже.", reply_markup=get_main_keyboard())
+        await update.message.reply_text(f"⚠️ Ошибка AI: {str(e)[:100]}", reply_markup=get_main_keyboard())
 
 # --- ОБРАБОТКА ФОТО ---
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -235,7 +232,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if context.user_data.get('edit_prompt'):
         prompt = context.user_data['edit_prompt']
-        await update.message.reply_text(f"✏️ Редактирую: *{prompt}*...", parse_mode="Markdown")
+        await update.message.reply_text(f"✏️ Редактирую: {prompt}...")
         try:
             result_path = await edit_photo(photo_url, prompt)
             with open(result_path, 'rb') as f:
@@ -246,7 +243,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             del context.user_data['edit_prompt']
     else:
-        await update.message.reply_text("✨ Отправь команду /animate перед фото для оживления!")
+        await update.message.reply_text("✨ Оживляю фото...")
+        result_path = await animate_photo(photo_url)
+        if result_path == photo_url:
+            await update.message.reply_text("⚠️ Функция оживления временно недоступна. Бот работает в базовом режиме.")
 
 # --- ЗАПУСК БОТА ---
 def main():
