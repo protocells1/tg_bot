@@ -1,7 +1,6 @@
-python-telegram-bot==20.7  
-groq==0.4.2  
-replicate==0.25.1  
-requests==2.31.0  
-python-dotenv==1.0.0  
-Pillow==10.2.0  
-aiohttp==3.9.3 
+python-telegram-bot==20.7 
+groq==0.4.2 
+requests==2.31.0 
+python-dotenv==1.0.0 
+Pillow==11.1.0 
+aiohttp==3.11.11
