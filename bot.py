@@ -79,11 +79,11 @@ async def generate_photo(prompt: str) -> str:
     return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&nologo=true"
 
 # ============================================================
-# 2. ГЕНЕРАЦИЯ ПЕСНИ (OpenRouter)
+# 2. ГЕНЕРАЦИЯ ПЕСНИ (OpenRouter - текст)
 # ============================================================
 async def generate_song_lyrics(topic: str) -> str:
     if not OPENROUTER_API_KEY:
-        return "❌ OpenRouter API ключ не настроен. Добавь OPENROUTER_API_KEY в переменные окружения."
+        return "❌ OpenRouter API ключ не настроен"
     try:
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
@@ -93,8 +93,8 @@ async def generate_song_lyrics(topic: str) -> str:
             "X-Title": "TelegramBot"
         }
         data = {
-            "model": "mistralai/mistral-7b-instruct:free",
-            "messages": [{"role": "user", "content": f"Напиши текст песни на русском языке на тему: {topic}. Только текст песни, с куплетами и припевом, без лишних пояснений."}],
+            "model": "meta-llama/llama-3.1-8b-instruct:free",
+            "messages": [{"role": "user", "content": f"Напиши текст песни на русском языке на тему: {topic}. Только текст песни, с куплетами и припевом. Без лишних слов и пояснений."}],
             "max_tokens": 800,
             "temperature": 0.8
         }
@@ -102,12 +102,10 @@ async def generate_song_lyrics(topic: str) -> str:
             async with session.post(url, json=data, headers=headers) as resp:
                 result = await resp.json()
                 if resp.status != 200:
-                    err_msg = result.get("error", {}).get("message", str(result))
-                    return f"❌ Ошибка API (статус {resp.status}): {err_msg[:150]}"
+                    return f"❌ Ошибка API (статус {resp.status})"
                 if "choices" in result and len(result["choices"]) > 0:
                     return result["choices"][0]["message"]["content"]
-                else:
-                    return f"❌ Неожиданный ответ API: {str(result)[:200]}"
+                return f"❌ Неожиданный ответ API"
     except Exception as e:
         return f"❌ Ошибка: {str(e)[:100]}"
 
@@ -126,7 +124,7 @@ async def analyze_photo(photo_url: str) -> str:
             "X-Title": "TelegramBot"
         }
         data = {
-            "model": "google/gemini-flash-1.5",
+            "model": "meta-llama/llama-3.2-11b-vision-instruct:free",
             "messages": [{
                 "role": "user",
                 "content": [
@@ -140,17 +138,15 @@ async def analyze_photo(photo_url: str) -> str:
             async with session.post(url, json=data, headers=headers) as resp:
                 result = await resp.json()
                 if resp.status != 200:
-                    err_msg = result.get("error", {}).get("message", str(result))
-                    return f"❌ Ошибка API (статус {resp.status}): {err_msg[:150]}"
+                    return f"❌ Ошибка API (статус {resp.status})"
                 if "choices" in result and len(result["choices"]) > 0:
                     return result["choices"][0]["message"]["content"]
-                else:
-                    return f"❌ Неожиданный ответ API: {str(result)[:200]}"
+                return f"❌ Неожиданный ответ API"
     except Exception as e:
         return f"❌ Ошибка: {str(e)[:100]}"
 
 # ============================================================
-# 4. ПОИСК ОБЪЕКТОВ (через AI)
+# 4. ПОИСК ОБЪЕКТОВ (OpenRouter Vision)
 # ============================================================
 async def describe_objects(photo_url: str) -> str:
     if not OPENROUTER_API_KEY:
@@ -164,11 +160,11 @@ async def describe_objects(photo_url: str) -> str:
             "X-Title": "TelegramBot"
         }
         data = {
-            "model": "google/gemini-flash-1.5",
+            "model": "meta-llama/llama-3.2-11b-vision-instruct:free",
             "messages": [{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Перечисли ВСЕ объекты, которые ты видишь на этом фото. Напиши простой список на русском языке. Если видишь людей, укажи их действия."},
+                    {"type": "text", "text": "Перечисли ВСЕ объекты, которые ты видишь на этом фото. Напиши простой список на русском языке, например: - объект1, - объект2. Если видишь людей, укажи их действия."},
                     {"type": "image_url", "image_url": {"url": photo_url}}
                 ]
             }],
@@ -178,17 +174,15 @@ async def describe_objects(photo_url: str) -> str:
             async with session.post(url, json=data, headers=headers) as resp:
                 result = await resp.json()
                 if resp.status != 200:
-                    err_msg = result.get("error", {}).get("message", str(result))
-                    return f"❌ Ошибка API (статус {resp.status}): {err_msg[:150]}"
+                    return f"❌ Ошибка API (статус {resp.status})"
                 if "choices" in result and len(result["choices"]) > 0:
                     return f"👁️ *Найденные объекты:*\n{result['choices'][0]['message']['content']}"
-                else:
-                    return f"❌ Неожиданный ответ API: {str(result)[:200]}"
+                return f"❌ Неожиданный ответ API"
     except Exception as e:
         return f"❌ Ошибка: {str(e)[:100]}"
 
 # ============================================================
-# 5. РАСПОЗНАВАНИЕ ТЕКСТА (через AI)
+# 5. РАСПОЗНАВАНИЕ ТЕКСТА (OpenRouter Vision)
 # ============================================================
 async def extract_text_from_photo(photo_url: str) -> str:
     if not OPENROUTER_API_KEY:
@@ -202,7 +196,7 @@ async def extract_text_from_photo(photo_url: str) -> str:
             "X-Title": "TelegramBot"
         }
         data = {
-            "model": "google/gemini-flash-1.5",
+            "model": "meta-llama/llama-3.2-11b-vision-instruct:free",
             "messages": [{
                 "role": "user",
                 "content": [
@@ -216,17 +210,15 @@ async def extract_text_from_photo(photo_url: str) -> str:
             async with session.post(url, json=data, headers=headers) as resp:
                 result = await resp.json()
                 if resp.status != 200:
-                    err_msg = result.get("error", {}).get("message", str(result))
-                    return f"❌ Ошибка API (статус {resp.status}): {err_msg[:150]}"
+                    return f"❌ Ошибка API (статус {resp.status})"
                 if "choices" in result and len(result["choices"]) > 0:
                     return f"📖 *Распознанный текст:*\n{result['choices'][0]['message']['content']}"
-                else:
-                    return f"❌ Неожиданный ответ API: {str(result)[:200]}"
+                return f"❌ Неожиданный ответ API"
     except Exception as e:
         return f"❌ Ошибка: {str(e)[:100]}"
 
 # ============================================================
-# 6. РЕДАКТИРОВАНИЕ ФОТО (локально, без API)
+# 6. РЕДАКТИРОВАНИЕ ФОТО (локально)
 # ============================================================
 async def edit_photo_local(photo_url: str, effect: str) -> str:
     async with aiohttp.ClientSession() as session:
@@ -316,7 +308,7 @@ async def edit_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✏️ *Редактирование фото*\n\nОтправь мне ФОТО, затем выбери эффект.", reply_markup=get_edit_keyboard(), parse_mode="Markdown")
     context.user_data['awaiting_edit_photo'] = True
 
-# --- АНАЛИЗ ФОТО ---
+# --- АНАЛИЗ ---
 async def analyze_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔍 Отправь мне ФОТО для подробного анализа.")
     context.user_data['awaiting_analyze'] = True
@@ -371,7 +363,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_main_keyboard()
         )
 
-# --- ОБРАБОТКА ЭФФЕКТОВ РЕДАКТИРОВАНИЯ ---
+# --- ОБРАБОТКА ЭФФЕКТОВ ---
 async def handle_edit_effect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     effect = update.message.text
     
@@ -394,12 +386,11 @@ async def handle_edit_effect(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await update.message.reply_text("Сначала отправь фото для редактирования через кнопку ✏️ Редактировать фото!")
 
-# --- ОБРАБОТКА ТЕКСТА (главные кнопки и AI диалог) ---
+# --- ОБРАБОТКА ТЕКСТА ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
 
-    # Проверка на ожидание ввода промптов
     if context.user_data.get('awaiting_photo'):
         await process_photo_prompt(update, context)
         return
@@ -407,39 +398,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_song_topic(update, context)
         return
 
-    # Главные кнопки
     if text == "💬 Общий чат":
         await update.message.reply_text("💬 Режим диалога активирован. Просто пиши мне сообщения!", reply_markup=get_main_keyboard())
-    
     elif text == "🖼 Создать фото":
         await photo_request(update, context)
-    
     elif text == "📝 Создать песню":
         await song_request(update, context)
-    
     elif text == "✏️ Редактировать фото":
         await edit_request(update, context)
-    
     elif text == "🔍 Анализ фото":
         await analyze_request(update, context)
-    
     elif text == "👁️ Найти объекты":
         await detect_request(update, context)
-    
     elif text == "📖 Распознать текст":
         await ocr_request(update, context)
-    
     elif text == "🗑 Очистить историю":
         await clear(update, context)
-    
     elif text == "❓ Помощь":
         await start(update, context)
-    
-    # Кнопки эффектов
     elif text in ["⚫ Черно-белое", "🌀 Размытие", "✨ Контраст", "☀️ Ярче", "🎭 Негатив", "◀️ Назад"]:
         await handle_edit_effect(update, context)
-    
-    # Обычный диалог с Groq AI
     else:
         await update.message.chat.send_action(action="typing")
         add_to_history(user_id, "user", text)
@@ -457,11 +435,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             answer = response.choices[0].message.content
             add_to_history(user_id, "assistant", answer)
             await update.message.reply_text(answer, reply_markup=get_main_keyboard())
-        
         except Exception as e:
             await update.message.reply_text(f"⚠️ Ошибка AI: {str(e)[:100]}", reply_markup=get_main_keyboard())
 
-# --- ЗАПУСК БОТА ---
+# --- ЗАПУСК ---
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
